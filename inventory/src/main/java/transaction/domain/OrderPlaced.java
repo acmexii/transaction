@@ -1,8 +1,6 @@
 package transaction.domain;
 
-import java.util.*;
 import lombok.*;
-import transaction.domain.*;
 import transaction.infra.AbstractEvent;
 
 @Data

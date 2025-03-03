@@ -12,7 +12,7 @@ import transaction.infra.AbstractEvent;
 public class InventoryChanged extends AbstractEvent {
 
     private Long id;
-    private Integer stock;
+    private Long stock;
 
     public InventoryChanged(Inventory aggregate) {
         super(aggregate);

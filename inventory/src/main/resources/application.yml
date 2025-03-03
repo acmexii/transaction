@@ -1,6 +1,5 @@
 server:
   port: 8080
-
 spring:
   application:
     name: inventory
@@ -13,12 +12,34 @@ spring:
       hibernate:
         show_sql: true
         format_sql: true
-        implicit_naming_strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyComponentPathImpl
   cloud:
     stream:
       kafka:
         binder:
           brokers: localhost:9092
+          required-acks: all
+          transaction:
+            transaction-id-prefix: tx-${random.uuid}
+            producer:
+              configuration:
+                enable.idempotence: true
+                retries: 3
+                acks: all
+                max.in.flight.requests.per.connection: 1
+                replication.factor: 1
+            consumer:
+              configuration:
+                isolation.level: read_committed
+                enable.auto.commit: false
+        bindings:
+          event-in:
+            consumer:
+              maxAttempts: 3
+              defaultRetryable: true
+              autoCommitOffset: false
+              startOffset: earliest
+              enableDlq: true
+              dlqName: inventory-dlq
         streams:
           binder:
             configuration:
@@ -30,14 +51,10 @@ spring:
       bindings:
         event-in:
           group: inventory
-#<<< EDA / Topic Name
           destination: transaction
-#>>> EDA / Topic Name
           contentType: application/json
         event-out:
-#<<< EDA / Topic Name
           destination: transaction
-#>>> EDA / Topic Name
           contentType: application/json
 
 logging:
@@ -47,7 +64,7 @@ logging:
 
 
 server:
-  port: 8083
+  port: 8082
 
 ---
 

@@ -1,10 +1,5 @@
 package transaction.domain;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.LocalDate;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
 import javax.persistence.*;
 import lombok.Data;
 import transaction.InventoryApplication;
@@ -12,50 +7,30 @@ import transaction.InventoryApplication;
 @Entity
 @Table(name = "Inventory_table")
 @Data
-//<<< DDD / Aggregate Root
 public class Inventory {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy=GenerationType.AUTO)
     private Long id;
+    private Long stock;
 
-    private Integer stock;
+    @PostUpdate
+    public void onPostUpdate(){
+    }
 
-    public static InventoryRepository repository() {
-        InventoryRepository inventoryRepository = InventoryApplication.applicationContext.getBean(
-            InventoryRepository.class
-        );
+    public static InventoryRepository repository(){
+        InventoryRepository inventoryRepository = InventoryApplication.applicationContext.getBean(InventoryRepository.class);
         return inventoryRepository;
     }
 
-    //<<< Clean Arch / Port Method
-    public static void decreaseStock(OrderPlaced orderPlaced) {
-        //implement business logic here:
-
-        /** Example 1:  new item 
-        Inventory inventory = new Inventory();
-        repository().save(inventory);
-
-        InventoryChanged inventoryChanged = new InventoryChanged(inventory);
-        inventoryChanged.publishAfterCommit();
-        */
-
-        /** Example 2:  finding and process
+    // 순수 재고차감 도메인 로직
+    public InventoryChanged decreaseStock(Integer qty) {
+        if (this.stock < qty) {
+            throw new RuntimeException("재고가 부족합니다");
+        }
         
-
-        repository().findById(orderPlaced.get???()).ifPresent(inventory->{
-            
-            inventory // do something
-            repository().save(inventory);
-
-            InventoryChanged inventoryChanged = new InventoryChanged(inventory);
-            inventoryChanged.publishAfterCommit();
-
-         });
-        */
-
+        this.stock -= qty;
+        return new InventoryChanged(this);
     }
-    //>>> Clean Arch / Port Method
 
 }
-//>>> DDD / Aggregate Root
