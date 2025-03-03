@@ -1,8 +1,8 @@
 package transaction.infra;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.BeanUtils;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.support.MessageBuilder;
@@ -12,18 +12,17 @@ import org.springframework.util.MimeTypeUtils;
 import transaction.OrderApplication;
 import transaction.config.kafka.KafkaProcessor;
 
-//<<< Clean Arch / Outbound Adaptor
 public class AbstractEvent {
 
     String eventType;
     Long timestamp;
 
-    public AbstractEvent(Object aggregate) {
+    public AbstractEvent(Object aggregate){
         this();
         BeanUtils.copyProperties(aggregate, this);
     }
 
-    public AbstractEvent() {
+    public AbstractEvent(){
         this.setEventType(this.getClass().getSimpleName());
         this.timestamp = System.currentTimeMillis();
     }
@@ -44,21 +43,74 @@ public class AbstractEvent {
                     MessageHeaders.CONTENT_TYPE,
                     MimeTypeUtils.APPLICATION_JSON
                 )
-                .setHeader("type", getEventType())
+                .setHeader(                    
+                    "type",
+                    getEventType()
+                )
+                .setHeader(
+                    KafkaHeaders.MESSAGE_KEY, new String("MsgKey-" + Math.floor(Math.random() * 10)).getBytes() // Create random Integer between 0~9. 
+                )
                 .build()
         );
     }
 
-    public void publishAfterCommit() {
-        TransactionSynchronizationManager.registerSynchronization(
-            new TransactionSynchronizationAdapter() {
-                @Override
-                public void afterCompletion(int status) {
-                    AbstractEvent.this.publish();
-                }
-            }
+    public void publish(String messageKey) {
+        /**
+         * spring streams 방식
+         */
+        KafkaProcessor processor = OrderApplication.applicationContext.getBean(
+            KafkaProcessor.class
+        );
+        MessageChannel outputChannel = processor.outboundTopic();
+
+        outputChannel.send(
+            MessageBuilder
+                .withPayload(this)
+                .setHeader(
+                    MessageHeaders.CONTENT_TYPE,
+                    MimeTypeUtils.APPLICATION_JSON
+                )
+                .setHeader(                    
+                    "type",
+                    getEventType()
+                )
+                .setHeader(
+                    KafkaHeaders.MESSAGE_KEY, messageKey
+                )
+                .build()
         );
     }
+
+    public void publishAfterCommit(Acknowledgment acknowledgment, boolean needToPublish){
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+
+            @Override
+            public void afterCommit() {
+                try {
+                    if(needToPublish) {
+                        AbstractEvent.this.publish();  // DB 커밋 후, Kafka Event 발행
+                    }
+                    acknowledgment.acknowledge(); // Kafka offset commit 
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    // 이벤트 발행 실패 시, 대응 전략 구현
+                    //eventRetryService.scheduleRetry(this, 3); example Code
+                }
+            }
+        });
+    }
+    
+    public void publishAfterCommit(){
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+
+            @Override
+            public void afterCompletion(int status) {
+                AbstractEvent.this.publish();
+            }
+        });
+    }
+
 
     public String getEventType() {
         return eventType;
@@ -76,21 +128,7 @@ public class AbstractEvent {
         this.timestamp = timestamp;
     }
 
-    public boolean validate() {
+    public boolean validate(){
         return getEventType().equals(getClass().getSimpleName());
     }
-
-    public String toJson() {
-        ObjectMapper objectMapper = new ObjectMapper();
-        String json = null;
-
-        try {
-            json = objectMapper.writeValueAsString(this);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("JSON format exception", e);
-        }
-
-        return json;
-    }
 }
-//>>> Clean Arch / Outbound Adaptor
